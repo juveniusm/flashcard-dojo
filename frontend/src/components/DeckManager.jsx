@@ -1,5 +1,6 @@
 // src/components/DeckManager.jsx
 import { useState } from "react";
+import { formatNextReview, isDeckDue } from "../utils/decks";
 
 function DeckManager({ apiBase, decks }) {
   const [selectedDeckId, setSelectedDeckId] = useState(null);
@@ -240,9 +241,39 @@ function DeckManager({ apiBase, decks }) {
                       deck.id === selectedDeckId ? "#0f172a" : "#374151",
                     fontSize: "0.9rem",
                     cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "0.35rem",
                   }}
                 >
-                  {deck.name}
+                  <span>{deck.name}</span>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                      fontSize: "0.75rem",
+                      color: "#4b5563",
+                    }}
+                  >
+                    <span
+                      style={{
+                        padding: "0.1rem 0.5rem",
+                        borderRadius: "999px",
+                        backgroundColor: isDeckDue(deck.nextReviewAt)
+                          ? "#fee2e2"
+                          : "#e0f2fe",
+                        color: isDeckDue(deck.nextReviewAt)
+                          ? "#991b1b"
+                          : "#075985",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {isDeckDue(deck.nextReviewAt) ? "Due" : "Scheduled"}
+                    </span>
+                    <span>{formatNextReview(deck.nextReviewAt)}</span>
+                  </span>
                 </button>
               ))
             )}

@@ -12,7 +12,9 @@ db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS decks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE
+      name TEXT NOT NULL UNIQUE,
+      review_level INTEGER NOT NULL DEFAULT 0,
+      next_review_at TEXT
     )
   `);
 
@@ -35,6 +37,36 @@ db.serialize(() => {
     INSERT OR IGNORE INTO decks (id, name)
     VALUES (1, 'Default deck')
   `);
+
+  // Lightweight migration for existing installations
+  db.all("PRAGMA table_info(decks)", (err, columns) => {
+    if (err) {
+      console.error("Failed to inspect decks table", err);
+      return;
+    }
+
+    const hasReviewLevel = columns.some((c) => c.name === "review_level");
+    const hasNextReviewAt = columns.some((c) => c.name === "next_review_at");
+
+    if (!hasReviewLevel) {
+      db.run(
+        "ALTER TABLE decks ADD COLUMN review_level INTEGER NOT NULL DEFAULT 0"
+      );
+    }
+
+    if (!hasNextReviewAt) {
+      db.run("ALTER TABLE decks ADD COLUMN next_review_at TEXT");
+    }
+
+    const nowIso = new Date().toISOString();
+    db.run(
+      "UPDATE decks SET review_level = COALESCE(review_level, 0)"
+    );
+    db.run(
+      "UPDATE decks SET next_review_at = COALESCE(next_review_at, ?)",
+      [nowIso]
+    );
+  });
 
   // Users table
   db.run(`

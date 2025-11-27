@@ -19,6 +19,8 @@ function StudyView({
   onResult, // "correct" | "incorrect"
   onRestart,
   authToken,
+  onDeckScheduled,
+  nextReviewAt,
 }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [lastOutcome, setLastOutcome] = useState(null); // "correct" | "incorrect" | null
@@ -27,6 +29,8 @@ function StudyView({
   const [shuffledCards, setShuffledCards] = useState([]); // order used in normal mode
   const [sessionLogged, setSessionLogged] = useState(false); // ensure we only log once
   const [endlessModalOpen, setEndlessModalOpen] = useState(false); // popup after ending endless session
+  const [runScheduled, setRunScheduled] = useState(false);
+  const [scheduleResult, setScheduleResult] = useState(null);
 
   const activeCards = getActiveCards(studyMode, shuffledCards, cards);
   const finished =
@@ -85,6 +89,8 @@ function StudyView({
     setShuffledCards(shuffleCards(cards));
     setSessionLogged(false);
     setEndlessModalOpen(false);
+    setRunScheduled(false);
+    setScheduleResult(null);
   }, [cards]);
 
   // Load saved per-card progress when logged in & deck selected
@@ -163,6 +169,66 @@ function StudyView({
     });
   }, [finished, sessionLogged, totalAnswered, correctCount, studyMode]);
 
+  // When a normal run finishes, schedule the next deck review
+  useEffect(() => {
+    if (
+      !finished ||
+      studyMode !== "normal" ||
+      totalAnswered === 0 ||
+      !currentDeckId ||
+      runScheduled
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const payload = {
+      correctCount,
+      totalCount: totalAnswered,
+    };
+
+    fetch(`${apiBase}/api/decks/${currentDeckId}/completeRun`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error("Failed to schedule deck review");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setScheduleResult({
+          nextReviewAt: data.nextReviewAt,
+          reviewLevel: data.reviewLevel,
+        });
+        if (onDeckScheduled) {
+          onDeckScheduled(data);
+        }
+      })
+      .catch((err) => {
+        console.error("Error scheduling deck review:", err);
+      })
+      .finally(() => {
+        setRunScheduled(true);
+      });
+
+    return () => controller.abort();
+  }, [
+    finished,
+    studyMode,
+    totalAnswered,
+    correctCount,
+    currentDeckId,
+    runScheduled,
+    apiBase,
+    onDeckScheduled,
+  ]);
+
   //
   // Early returns
   //
@@ -192,6 +258,8 @@ function StudyView({
     setShuffledCards(shuffleCards(cards));
     setSessionLogged(false);
     setEndlessModalOpen(false);
+    setRunScheduled(false);
+    setScheduleResult(null);
   };
 
   const handleSelectNormal = () => {
@@ -202,6 +270,8 @@ function StudyView({
     setShuffledCards(shuffleCards(cards));
     setSessionLogged(false);
     setEndlessModalOpen(false);
+    setRunScheduled(false);
+    setScheduleResult(null);
     onRestart();
   };
 
@@ -212,6 +282,8 @@ function StudyView({
     setCardStats({});
     setSessionLogged(false);
     setEndlessModalOpen(false);
+    setRunScheduled(false);
+    setScheduleResult(null);
     onRestart();
   };
 
@@ -315,6 +387,8 @@ function StudyView({
           correctCount={correctCount}
           authToken={authToken}
           onRestartFull={handleRestartFull}
+          nextReviewAt={scheduleResult?.nextReviewAt || nextReviewAt}
+          reviewLevel={scheduleResult?.reviewLevel}
         />
         <EndlessSessionModal
           open={endlessModalOpen}
