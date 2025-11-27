@@ -1,11 +1,14 @@
 // src/components/study/FinishedView.jsx
 import { computeAccuracy } from "../../utils/study";
+import { formatNextReview } from "../../utils/decks";
 
 function FinishedView({
   totalAnswered,
   correctCount,
   authToken,
   onRestartFull,
+  nextReviewAt,
+  reviewLevel,
 }) {
   const accuracy = computeAccuracy(totalAnswered, correctCount);
 
@@ -33,6 +36,23 @@ function FinishedView({
         {totalAnswered === 1 ? "" : "s"}, with {correctCount} correct (
         {accuracy}% accuracy).
       </p>
+      {nextReviewAt && (
+        <p
+          style={{
+            marginTop: 0,
+            marginBottom: "0.75rem",
+            color: "#166534",
+            fontSize: "0.9rem",
+          }}
+        >
+          Next review: {formatNextReview(nextReviewAt)}
+          {typeof reviewLevel === "number" && (
+            <>
+              {" "}(level {reviewLevel})
+            </>
+          )}
+        </p>
+      )}
       {!authToken && (
         <p style={{ fontSize: "0.85rem", color: "#166534" }}>
           Log in to keep a history of your completed sessions.
