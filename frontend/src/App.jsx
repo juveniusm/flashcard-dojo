@@ -71,6 +71,7 @@ function App() {
   const loadDecks = useCallback(() => {
     if (!auth?.token) return;
 
+  const loadDecks = () => {
     const query = showDueOnly ? "?dueOnly=true" : "";
     fetch(`${API_BASE}/api/decks${query}`)
       .then((res) => res.json())
@@ -85,16 +86,29 @@ function App() {
 
           return data[0].id;
         });
+        if (data.length === 0) {
+          setSelectedDeckId(null);
+          return;
+        }
+
+        // Keep the current selection if still present, otherwise fall back to the first deck
+        const stillExists = data.some((d) => d.id === selectedDeckId);
+        if (!stillExists) {
+          setSelectedDeckId(data[0].id);
+        }
       })
       .catch((err) => {
         console.error("Error loading decks:", err);
       });
   }, [auth?.token, showDueOnly]);
+  };
 
   // Load decks on start and when toggling due-only filter
   useEffect(() => {
     loadDecks();
   }, [loadDecks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDueOnly]);
 
   // Load cards when deck changes
   useEffect(() => {
