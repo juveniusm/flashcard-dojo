@@ -1,5 +1,5 @@
 // src/App.jsx
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AddCardForm from "./components/AddCardForm";
 import StudyView from "./components/StudyView";
 import DeckManager from "./components/DeckManager";
@@ -68,7 +68,7 @@ function App() {
     }
   };
 
-  const loadDecks = () => {
+  const loadDecks = useCallback(() => {
     if (!auth?.token) return;
 
     const query = showDueOnly ? "?dueOnly=true" : "";
@@ -76,27 +76,25 @@ function App() {
       .then((res) => res.json())
       .then((data) => {
         setDecks(data);
-        if (data.length === 0) {
-          setSelectedDeckId(null);
-          return;
-        }
 
-        // Keep the current selection if still present, otherwise fall back to the first deck
-        const stillExists = data.some((d) => d.id === selectedDeckId);
-        if (!stillExists) {
-          setSelectedDeckId(data[0].id);
-        }
+        setSelectedDeckId((prevSelected) => {
+          if (data.length === 0) return null;
+
+          const stillExists = data.some((d) => d.id === prevSelected);
+          if (stillExists) return prevSelected;
+
+          return data[0].id;
+        });
       })
       .catch((err) => {
         console.error("Error loading decks:", err);
       });
-  };
+  }, [auth?.token, showDueOnly]);
 
   // Load decks on start and when toggling due-only filter
   useEffect(() => {
     loadDecks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showDueOnly, auth?.token]);
+  }, [loadDecks]);
 
   // Load cards when deck changes
   useEffect(() => {
