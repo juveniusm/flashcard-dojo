@@ -1,9 +1,10 @@
 // src/App.jsx
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AddCardForm from "./components/AddCardForm";
 import StudyView from "./components/StudyView";
 import DeckManager from "./components/DeckManager";
 import AuthPanel from "./components/AuthPanel";
+import AuthPage from "./components/AuthPage";
 import SessionsPage from "./components/SessionsPage";
 import { isDeckDue, formatNextReview } from "./utils/decks";
 
@@ -50,6 +51,12 @@ function App() {
   const handleAuthChange = (nextAuth) => {
     setAuth(nextAuth);
 
+    if (!nextAuth?.token) {
+      setDecks([]);
+      setSelectedDeckId(null);
+      setCards([]);
+    }
+
     try {
       if (nextAuth && nextAuth.token) {
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextAuth));
@@ -61,12 +68,24 @@ function App() {
     }
   };
 
+  const loadDecks = useCallback(() => {
+    if (!auth?.token) return;
+
   const loadDecks = () => {
     const query = showDueOnly ? "?dueOnly=true" : "";
     fetch(`${API_BASE}/api/decks${query}`)
       .then((res) => res.json())
       .then((data) => {
         setDecks(data);
+
+        setSelectedDeckId((prevSelected) => {
+          if (data.length === 0) return null;
+
+          const stillExists = data.some((d) => d.id === prevSelected);
+          if (stillExists) return prevSelected;
+
+          return data[0].id;
+        });
         if (data.length === 0) {
           setSelectedDeckId(null);
           return;
@@ -81,11 +100,13 @@ function App() {
       .catch((err) => {
         console.error("Error loading decks:", err);
       });
+  }, [auth?.token, showDueOnly]);
   };
 
   // Load decks on start and when toggling due-only filter
   useEffect(() => {
     loadDecks();
+  }, [loadDecks]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showDueOnly]);
 
@@ -159,6 +180,12 @@ function App() {
     const url = `${window.location.origin}?view=sessions`;
     window.open(url, "_blank", "noopener");
   };
+
+  if (!auth.user) {
+    return (
+      <AuthPage apiBase={API_BASE} auth={auth} onAuthChange={handleAuthChange} />
+    );
+  }
 
   // --- Layout shared between views ---
   return (
