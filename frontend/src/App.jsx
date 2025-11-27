@@ -4,7 +4,9 @@ import AddCardForm from "./components/AddCardForm";
 import StudyView from "./components/StudyView";
 import DeckManager from "./components/DeckManager";
 import AuthPanel from "./components/AuthPanel";
+import AuthPage from "./components/AuthPage";
 import SessionsPage from "./components/SessionsPage";
+import { isDeckDue, formatNextReview } from "./utils/decks";
 
 const API_BASE = "http://localhost:3000";
 const AUTH_STORAGE_KEY = "flashcardDojoAuth";
@@ -15,6 +17,7 @@ function App() {
   const [selectedDeckId, setSelectedDeckId] = useState(null);
   const [cards, setCards] = useState([]);
   const [loadingCards, setLoadingCards] = useState(false);
+  const [showDueOnly, setShowDueOnly] = useState(false);
 
   const [totalAnswered, setTotalAnswered] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
@@ -27,8 +30,8 @@ function App() {
     return params.get("view") === "sessions" ? "sessions" : "app";
   });
 
-  const currentDeckName =
-    decks.find((d) => d.id === selectedDeckId)?.name || "";
+  const currentDeck = decks.find((d) => d.id === selectedDeckId);
+  const currentDeckName = currentDeck?.name || "";
 
   // --- Restore auth from localStorage on startup (for all views) ---
   useEffect(() => {
@@ -48,6 +51,12 @@ function App() {
   const handleAuthChange = (nextAuth) => {
     setAuth(nextAuth);
 
+    if (!nextAuth?.token) {
+      setDecks([]);
+      setSelectedDeckId(null);
+      setCards([]);
+    }
+
     try {
       if (nextAuth && nextAuth.token) {
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextAuth));
@@ -59,20 +68,35 @@ function App() {
     }
   };
 
-  // Load decks on start
-  useEffect(() => {
-    fetch(`${API_BASE}/api/decks`)
+  const loadDecks = () => {
+    if (!auth?.token) return;
+
+    const query = showDueOnly ? "?dueOnly=true" : "";
+    fetch(`${API_BASE}/api/decks${query}`)
       .then((res) => res.json())
       .then((data) => {
         setDecks(data);
-        if (!selectedDeckId && data.length > 0) {
+        if (data.length === 0) {
+          setSelectedDeckId(null);
+          return;
+        }
+
+        // Keep the current selection if still present, otherwise fall back to the first deck
+        const stillExists = data.some((d) => d.id === selectedDeckId);
+        if (!stillExists) {
           setSelectedDeckId(data[0].id);
         }
       })
       .catch((err) => {
         console.error("Error loading decks:", err);
       });
-  }, []);
+  };
+
+  // Load decks on start and when toggling due-only filter
+  useEffect(() => {
+    loadDecks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDueOnly, auth?.token]);
 
   // Load cards when deck changes
   useEffect(() => {
@@ -106,6 +130,28 @@ function App() {
     }
   };
 
+  const handleDeckScheduleUpdate = (updatedDeck) => {
+    setDecks((prev) => {
+      let next = prev.map((d) => (d.id === updatedDeck.id ? updatedDeck : d));
+      const exists = next.some((d) => d.id === updatedDeck.id);
+      if (!exists) {
+        next = [...next, updatedDeck];
+      }
+      if (showDueOnly && !isDeckDue(updatedDeck.nextReviewAt)) {
+        next = next.filter((d) => d.id !== updatedDeck.id);
+      }
+      return next;
+    });
+
+    if (showDueOnly && !isDeckDue(updatedDeck.nextReviewAt)) {
+      const fallbackDeck = decks.find((d) => d.id !== updatedDeck.id);
+      if (selectedDeckId === updatedDeck.id) {
+        setSelectedDeckId(fallbackDeck ? fallbackDeck.id : null);
+      }
+      loadDecks();
+    }
+  };
+
   const handleResult = (outcome) => {
     setTotalAnswered((prev) => prev + 1);
     if (outcome === "correct") {
@@ -122,6 +168,12 @@ function App() {
     const url = `${window.location.origin}?view=sessions`;
     window.open(url, "_blank", "noopener");
   };
+
+  if (!auth.user) {
+    return (
+      <AuthPage apiBase={API_BASE} auth={auth} onAuthChange={handleAuthChange} />
+    );
+  }
 
   // --- Layout shared between views ---
   return (
@@ -178,39 +230,99 @@ function App() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "0.5rem",
+                  gap: "0.75rem",
+                  flexWrap: "wrap",
                 }}
               >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                  }}
+                >
+                  <label
+                    style={{
+                      fontSize: "0.85rem",
+                      color: "#4b5563",
+                    }}
+                  >
+                    Deck:
+                  </label>
+                  <select
+                    value={selectedDeckId || ""}
+                    onChange={handleSelectDeck}
+                    style={{
+                      padding: "0.35rem 0.6rem",
+                      borderRadius: "999px",
+                      border: "1px solid #d1d5db",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    {decks.length === 0 && (
+                      <option value="">No decks yet</option>
+                    )}
+                    {decks.map((deck) => (
+                      <option key={deck.id} value={deck.id}>
+                        {deck.name}
+                        {isDeckDue(deck.nextReviewAt) ? " (Due)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <label
                   style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
                     fontSize: "0.85rem",
                     color: "#4b5563",
+                    cursor: "pointer",
                   }}
                 >
-                  Deck:
+                  <input
+                    type="checkbox"
+                    checked={showDueOnly}
+                    onChange={(e) => setShowDueOnly(e.target.checked)}
+                  />
+                  Show only due decks
                 </label>
-                <select
-                  value={selectedDeckId || ""}
-                  onChange={handleSelectDeck}
-                  style={{
-                    padding: "0.35rem 0.6rem",
-                    borderRadius: "999px",
-                    border: "1px solid #d1d5db",
-                    fontSize: "0.9rem",
-                  }}
-                >
-                  {decks.length === 0 && (
-                    <option value="">No decks yet</option>
-                  )}
-                  {decks.map((deck) => (
-                    <option key={deck.id} value={deck.id}>
-                      {deck.name}
-                    </option>
-                  ))}
-                </select>
               </div>
             )}
           </div>
+
+          {view === "app" && currentDeck && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                color: "#4b5563",
+                fontSize: "0.9rem",
+              }}
+            >
+              <span
+                style={{
+                  padding: "0.15rem 0.6rem",
+                  borderRadius: "999px",
+                  backgroundColor: isDeckDue(currentDeck.nextReviewAt)
+                    ? "#fee2e2"
+                    : "#e0f2fe",
+                  color: isDeckDue(currentDeck.nextReviewAt)
+                    ? "#991b1b"
+                    : "#075985",
+                  fontWeight: 600,
+                  fontSize: "0.8rem",
+                }}
+              >
+                {isDeckDue(currentDeck.nextReviewAt) ? "Due" : "Scheduled"}
+              </span>
+              <span>
+                Next review: {formatNextReview(currentDeck.nextReviewAt)}
+              </span>
+            </div>
+          )}
 
           {view === "app" && (
             <div
@@ -330,18 +442,20 @@ function App() {
               <DeckManager apiBase={API_BASE} decks={decks} />
             </>
           ) : (
-            <StudyView
-              apiBase={API_BASE}
-              cards={cards}
-              loadingCards={loadingCards}
-              currentDeckName={currentDeckName}
-              currentDeckId={selectedDeckId}
-              totalAnswered={totalAnswered}
-              correctCount={correctCount}
-              onResult={handleResult}
-              onRestart={handleRestart}
-              authToken={auth.token}
-            />
+              <StudyView
+                apiBase={API_BASE}
+                cards={cards}
+                loadingCards={loadingCards}
+                currentDeckName={currentDeckName}
+                currentDeckId={selectedDeckId}
+                totalAnswered={totalAnswered}
+                correctCount={correctCount}
+                onResult={handleResult}
+                onRestart={handleRestart}
+                authToken={auth.token}
+                onDeckScheduled={handleDeckScheduleUpdate}
+                nextReviewAt={currentDeck?.nextReviewAt}
+              />
           )}
         </main>
       </div>
