@@ -47,6 +47,14 @@ router.post("/sessions", authMiddleware, (req, res) => {
   );
 });
 
+function toISO(timestamp) {
+  if (!timestamp) return timestamp;
+  // SQLite CURRENT_TIMESTAMP returns "YYYY-MM-DD HH:MM:SS" in UTC.
+  // Append "Z" so it parses as UTC instead of local time, then emit ISO.
+  const date = new Date(`${timestamp}Z`);
+  return Number.isNaN(date.getTime()) ? timestamp : date.toISOString();
+}
+
 // GET /api/sessions
 router.get("/sessions", authMiddleware, (req, res) => {
   const userId = req.userId;
@@ -85,7 +93,12 @@ router.get("/sessions", authMiddleware, (req, res) => {
       console.error("Error loading sessions:", err);
       return res.status(500).json({ error: "Failed to load sessions" });
     }
-    res.json(rows);
+    const normalized = rows.map((row) => ({
+      ...row,
+      startedAt: toISO(row.startedAt),
+      finishedAt: toISO(row.finishedAt),
+    }));
+    res.json(normalized);
   });
 });
 
